@@ -148,8 +148,8 @@
 +		data: decodeBase64(part.data, part.type === "image" ? "Image" : "File")
  	});
 -	const images = prepared.filter((part) => "data" in part);
-+	const images = prepared.filter((item) => item.part.type === "image");
-+	const files = prepared.filter((item) => item.part.type === "file");
++	const images = prepared.filter((item) => "data" in item && item.part.type === "image");
++	const files = prepared.filter((item) => "data" in item && item.part.type === "file");
  	if (images.reduce((sum, image) => sum + image.data.byteLength, 0) > limits.maxMessageImageBytes) throw new AttachmentError("Prompt exceeds the configured aggregate image-byte limit.", "IMAGES_TOO_LARGE");
 +	if (files.some((file) => file.data.byteLength > MAX_DOCUMENT_BYTES)) throw new AttachmentError("A document exceeds the configured 25 MB limit.", "FILE_TOO_LARGE");
 +	if (files.reduce((sum, file) => sum + file.data.byteLength, 0) > MAX_DOCUMENT_TOTAL_BYTES) throw new AttachmentError("Documents exceed the configured aggregate 50 MB limit.", "FILES_TOO_LARGE");
