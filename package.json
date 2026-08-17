@@ -1,6 +1,6 @@
 {
   "name": "dsh-file-attachments",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Reinstallable DSH plugin that adds CSV, PDF, Markdown, .skill, text, and code-file attachments",
   "license": "MIT",
   "type": "module",

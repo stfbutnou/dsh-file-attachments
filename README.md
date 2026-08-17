@@ -12,6 +12,12 @@
 ## 安裝
 
 ```sh
+dsh plugin --profile web add https://github.com/stfbutnou/dsh-file-attachments/releases/download/v0.1.1/dsh-file-attachments-0.1.1.tgz
+```
+
+也可以直接安裝 GitHub source：
+
+```sh
 dsh plugin --profile web add github:stfbutnou/dsh-file-attachments
 ```
 
