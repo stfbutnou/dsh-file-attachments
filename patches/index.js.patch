@@ -1,0 +1,175 @@
+--- index.js
++++ index.js
+@@ -1,8 +1,8 @@
+ import { Service } from "@deepseek-ai/cordis";
+ import z from "@deepseek-ai/schemastery";
+ import { randomUUID } from "node:crypto";
+-import { mkdir, stat } from "node:fs/promises";
+-import { dirname, extname } from "node:path";
++import { mkdir, rm, stat, writeFile } from "node:fs/promises";
++import { dirname, extname, join } from "node:path";
+ import { installModelSelection } from "@deepseek-ai/dsh-agent";
+ import { AttachmentError } from "@deepseek-ai/dsh-attachment";
+ import { ReasoningEffortId, contentHasImage, createUserMessage, errorChain, freezeMessage } from "@deepseek-ai/dsh-llm";
+@@ -21,7 +21,7 @@
+ import { UserQuestionError } from "@deepseek-ai/dsh-user-questions";
+ import { DirectoryPickerError } from "@deepseek-ai/dsh-host-directory-picker";
+ import { API_REMOTE_FORWARDED_EVENTS, ApiRemoteSessionNotFound, ApiRemoteSubagentSessionOwnership, apiRemoteSubagentOwnershipError, createApiRemoteAgentResolver, hasApiRemoteSubagentOwner, inspectApiRemoteSession } from "@deepseek-ai/dsh-api-remotes";
+-import { release } from "node:os";
++import { release, tmpdir } from "node:os";
+ import { runNativeCommand } from "@deepseek-ai/dsh-native-command";
+ //#region lib/types/session-export.js
+ /**
+@@ -606,6 +606,11 @@
+ }), z$1.object({
+ 	type: z$1.literal("image"),
+ 	mediaType: imageMediaTypeSchema,
++	data: z$1.string(),
++	name: z$1.string().optional()
++}), z$1.object({
++	type: z$1.literal("file"),
++	mediaType: z$1.string().min(1),
+ 	data: z$1.string(),
+ 	name: z$1.string().optional()
+ })]);
+@@ -902,26 +907,119 @@
+ const DEFAULT_COLD_BLANK_PROBE_MAX_BYTES = 1024;
+ /** Conversation message event types (the pagination counting unit). */
+ const MESSAGE_TYPES = new Set(["user/message", "assistant/message"]);
+-/** Decode the browser payload while rejecting non-canonical base64 forms. */
+-function decodeBase64(data) {
++	/** Maximum encoded bytes accepted for one non-image document. */
++const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
++	/** Maximum aggregate encoded bytes accepted for non-image documents in one prompt. */
++const MAX_DOCUMENT_TOTAL_BYTES = 50 * 1024 * 1024;
++	/** Extensions treated as UTF-8 text even when browsers send a generic MIME type. */
++const DOCUMENT_TEXT_EXTENSIONS = /* @__PURE__ */ new Set([
++	".txt",
++	".md",
++	".markdown",
++	".skill",
++	".csv",
++	".tsv",
++	".json",
++	".yaml",
++	".yml",
++	".xml",
++	".html",
++	".htm",
++	".css",
++	".js",
++	".mjs",
++	".cjs",
++	".ts",
++	".tsx",
++	".jsx",
++	".py",
++	".sh",
++	".bash",
++	".zsh",
++	".toml",
++	".ini",
++	".cfg",
++	".conf",
++	".env",
++	".log",
++	".sql",
++	".rs",
++	".go",
++	".java",
++	".c",
++	".h",
++	".cpp",
++	".hpp",
++	".swift",
++	".kt",
++	".rb",
++	".php"
++]);
++	/** MIME types treated as UTF-8 text. */
++	const DOCUMENT_TEXT_MEDIA_TYPES = /* @__PURE__ */ new Set([
++	"text/plain",
++	"text/markdown",
++	"text/csv",
++	"text/tab-separated-values",
++	"text/html",
++	"text/css",
++	"text/javascript",
++	"text/typescript",
++	"text/x-python",
++	"text/x-shellscript",
++	"application/json",
++	"application/yaml",
++	"application/x-yaml",
++	"application/xml",
++	"application/sql"
++]);
++	/** Decode the browser payload while rejecting non-canonical base64 forms. */
++function decodeBase64(data, label = "File") {
+ 	const decoded = Buffer.from(data, "base64");
+-	if (data.length === 0 || decoded.toString("base64") !== data) throw new AttachmentError("Image upload is not canonical base64.", "INVALID_IMAGE_BASE64");
++	if (data.length === 0 || decoded.toString("base64") !== data) throw new AttachmentError(`${label} upload is not canonical base64.`, label === "Image" ? "INVALID_IMAGE_BASE64" : "INVALID_FILE_BASE64");
+ 	return new Uint8Array(decoded);
+ }
++	/** Extract a document's model-facing text without persisting the uploaded bytes as an opaque artifact. */
++	async function extractDocumentText(part, data) {
++		if (data.byteLength === 0) throw new AttachmentError("File is empty.", "EMPTY_FILE");
++		const name = part.name ?? "attachment";
++		const extension = extname(name).toLowerCase();
++		if (part.mediaType === "application/pdf" || extension === ".pdf") {
++			const target = join(tmpdir(), `dsh-upload-${randomUUID()}.pdf`);
++			try {
++				await writeFile(target, data, { mode: 384 });
++				const python = "import sys\nfrom pypdf import PdfReader\nreader = PdfReader(sys.argv[1])\ntext = []\nfor page in reader.pages:\n    text.append(page.extract_text() or '')\nsys.stdout.write('\\n\\n'.join(text))";
++				const result = await runNativeCommand("python3", ["-c", python, target]);
++				return result.stdout;
++			} catch (error) {
++				throw new AttachmentError("Unable to extract text from this PDF on the local host.", "PDF_TEXT_EXTRACTION_FAILED", { cause: error });
++			} finally {
++				await rm(target, { force: true }).catch(() => {});
++			}
++		}
++		if (DOCUMENT_TEXT_MEDIA_TYPES.has(part.mediaType) || DOCUMENT_TEXT_EXTENSIONS.has(extension)) return Buffer.from(data).toString("utf8").replace(/^\uFEFF/, "");
++		throw new AttachmentError("This file type is not a supported text or PDF document.", "UNSUPPORTED_FILE_TYPE");
++	}
+ /** Validate one prompt as a batch before publishing any durable image object. */
+ async function durablePromptContent(ctx, content) {
+ 	if (content.every((part) => part.type === "text")) return content.map((part) => ({
+ 		type: "text",
+ 		text: part.text
+ 	}));
++	const imageParts = content.filter((part) => part.type === "image");
+ 	const limits = ctx.attachments.imageLimits;
+-	if (content.filter((part) => part.type === "image").length > limits.maxImagesPerMessage) throw new AttachmentError("Prompt exceeds the configured image-count limit.", "TOO_MANY_IMAGES");
++	if (imageParts.length > limits.maxImagesPerMessage) throw new AttachmentError("Prompt exceeds the configured image-count limit.", "TOO_MANY_IMAGES");
+ 	const prepared = content.map((part) => part.type === "text" ? part : {
+ 		part,
+-		data: decodeBase64(part.data)
++		data: decodeBase64(part.data, part.type === "image" ? "Image" : "File")
+ 	});
+-	const images = prepared.filter((part) => "data" in part);
++	const images = prepared.filter((item) => item.part.type === "image");
++	const files = prepared.filter((item) => item.part.type === "file");
+ 	if (images.reduce((sum, image) => sum + image.data.byteLength, 0) > limits.maxMessageImageBytes) throw new AttachmentError("Prompt exceeds the configured aggregate image-byte limit.", "IMAGES_TOO_LARGE");
++	if (files.some((file) => file.data.byteLength > MAX_DOCUMENT_BYTES)) throw new AttachmentError("A document exceeds the configured 25 MB limit.", "FILE_TOO_LARGE");
++	if (files.reduce((sum, file) => sum + file.data.byteLength, 0) > MAX_DOCUMENT_TOTAL_BYTES) throw new AttachmentError("Documents exceed the configured aggregate 50 MB limit.", "FILES_TOO_LARGE");
++	const extracted = new Map();
++	for (const file of files) extracted.set(file, await extractDocumentText(file.part, file.data));
+ 	for (const image of images) await ctx.attachments.validateImage({
+ 		data: image.data,
+ 		mediaType: image.part.mediaType,
+@@ -936,6 +1034,14 @@
+ 			});
+ 			continue;
+ 		}
++		if (item.part.type === "file") {
++			const name = item.part.name ?? "attachment";
++			blocks.push({
++				type: "text",
++				text: `\n\n--- Attached file: ${name} (${item.part.mediaType}) ---\n${extracted.get(item)}\n--- End attached file ---`
++			});
++			continue;
++		}
+ 		const attachment = await ctx.attachments.saveImage({
+ 			data: item.data,
+ 			mediaType: item.part.mediaType,

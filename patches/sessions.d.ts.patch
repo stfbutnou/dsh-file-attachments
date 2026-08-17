@@ -1,0 +1,14 @@
+--- sessions.d.ts
++++ sessions.d.ts
+@@ -87,6 +87,11 @@
+     mediaType: ImageMediaType;
+     data: string;
+     name?: string;
++} | {
++    type: 'file';
++    mediaType: string;
++    data: string;
++    name?: string;
+ };
+ /** Complete model selection for one session. */
+ export interface ModelSelection {

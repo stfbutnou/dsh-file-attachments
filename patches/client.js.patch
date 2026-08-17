@@ -1,0 +1,330 @@
+--- client.js
++++ client.js
+@@ -57,11 +57,116 @@
+ 		* private fields bypass that rebinding.
+ 		*/
+ 		/** Create one browser-only draft descriptor; only its id enters input state. */
+-		function browserDraftAttachment(file) {
+-			return {
++		const IMAGE_EXTENSIONS = /* @__PURE__ */ new Map([
++			[".png", "image/png"],
++			[".jpg", "image/jpeg"],
++			[".jpeg", "image/jpeg"],
++			[".webp", "image/webp"],
++			[".gif", "image/gif"]
++		]);
++		const DOCUMENT_EXTENSIONS = /* @__PURE__ */ new Map([
++			[".txt", "text/plain"],
++			[".md", "text/markdown"],
++			[".markdown", "text/markdown"],
++			[".skill", "text/plain"],
++			[".csv", "text/csv"],
++			[".tsv", "text/tab-separated-values"],
++			[".json", "application/json"],
++			[".yaml", "application/yaml"],
++			[".yml", "application/yaml"],
++			[".xml", "application/xml"],
++			[".html", "text/html"],
++			[".htm", "text/html"],
++			[".css", "text/css"],
++			[".js", "text/javascript"],
++			[".mjs", "text/javascript"],
++			[".cjs", "text/javascript"],
++			[".ts", "text/typescript"],
++			[".tsx", "text/typescript"],
++			[".jsx", "text/javascript"],
++			[".py", "text/x-python"],
++			[".sh", "text/x-shellscript"],
++			[".bash", "text/x-shellscript"],
++			[".zsh", "text/x-shellscript"],
++			[".toml", "text/plain"],
++			[".ini", "text/plain"],
++			[".cfg", "text/plain"],
++			[".conf", "text/plain"],
++			[".env", "text/plain"],
++			[".log", "text/plain"],
++			[".sql", "application/sql"],
++			[".rs", "text/plain"],
++			[".go", "text/plain"],
++			[".java", "text/plain"],
++			[".c", "text/plain"],
++			[".h", "text/plain"],
++			[".cpp", "text/plain"],
++			[".hpp", "text/plain"],
++			[".swift", "text/plain"],
++			[".kt", "text/plain"],
++			[".rb", "text/plain"],
++			[".php", "text/plain"],
++			[".pdf", "application/pdf"]
++		]);
++		const DOCUMENT_MEDIA_TYPES = /* @__PURE__ */ new Set([
++			"text/plain",
++			"text/markdown",
++			"text/csv",
++			"text/tab-separated-values",
++			"text/html",
++			"text/css",
++			"text/javascript",
++			"text/typescript",
++			"text/x-python",
++			"text/x-shellscript",
++			"application/json",
++			"application/yaml",
++			"application/x-yaml",
++			"application/xml",
++			"application/sql",
++			"application/pdf"
++		]);
++		const SUPPORTED_FILE_ACCEPT = [...IMAGE_EXTENSIONS.keys(), ...DOCUMENT_EXTENSIONS.keys()].join(",");
++		/** Unsupported browser-declared document type, localized by the UI boundary. */
++		var UnsupportedDocumentMediaTypeError = class extends Error {
++			mediaType;
++			constructor(mediaType) {
++				super(`unsupported document media type: ${mediaType || "(empty)"}`);
++				this.name = "UnsupportedDocumentMediaTypeError";
++				this.mediaType = mediaType;
++			}
++		};
++		function extensionOf(file) {
++			const name = file.name ?? "";
++			const at = name.lastIndexOf(".");
++			return at < 0 ? "" : name.slice(at).toLowerCase();
++		}
++		function fileMediaType(file) {
++			const declared = (file.type ?? "").toLowerCase();
++			const extension = extensionOf(file);
++			const imageType = declared.startsWith("image/") ? declared : IMAGE_EXTENSIONS.get(extension);
++			if (imageType !== void 0) return {
+ 				kind: "image",
++				mediaType: imageMediaType(imageType)
++			};
++			const mediaType = DOCUMENT_EXTENSIONS.get(extension) ?? (DOCUMENT_MEDIA_TYPES.has(declared) ? declared : void 0);
++			if (mediaType !== void 0) return {
++				kind: "file",
++				mediaType
++			};
++			throw new UnsupportedDocumentMediaTypeError(declared || extension);
++		}
++		function filePreviewUrl(file) {
++			const extension = extensionOf(file).replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase() || "FILE";
++			const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="100" viewBox="0 0 160 100"><rect width="160" height="100" rx="12" fill="#eef2ff"/><path d="M48 20h43l21 21v39H48z" fill="#3964fe" opacity=".15"/><path d="M91 20v22h21" fill="none" stroke="#3964fe" stroke-width="4"/><text x="80" y="68" fill="#2748b5" font-family="Arial,sans-serif" font-size="18" font-weight="700" text-anchor="middle">${extension}</text></svg>`;
++			return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
++		}
++		function browserDraftAttachment(file, descriptor) {
++			return {
++				kind: descriptor.kind,
++				mediaType: descriptor.mediaType,
+ 				id: crypto.randomUUID(),
+-				previewUrl: URL.createObjectURL(file),
++				previewUrl: descriptor.kind === "image" ? URL.createObjectURL(file) : filePreviewUrl(file),
+ 				file
+ 			};
+ 		}
+@@ -130,7 +235,7 @@
+ 			async sendSession(session, text, imageIds, mode) {
+ 				const attachments = this.draftImages(imageIds);
+ 				if (attachments.length !== imageIds.length) throw new Error("conversation.sendSession: one or more draft images are no longer available");
+-				const content = [...await this.serializeImages(attachments.map((attachment) => attachment.file)), ...text === "" ? [] : [{
++				const content = [...await this.serializeImages(attachments), ...text === "" ? [] : [{
+ 					type: "text",
+ 					text
+ 				}]];
+@@ -144,9 +249,8 @@
+ 			* @returns ordered draft descriptors.
+ 			*/
+ 			createDraftImages(files) {
+-				for (const file of files) imageMediaType(file.type);
+ 				return files.map((file) => {
+-					const attachment = browserDraftAttachment(file);
++					const attachment = browserDraftAttachment(file, fileMediaType(file));
+ 					this.draftAttachments.set(attachment.id, attachment);
+ 					this.createdImageUrls.add(attachment.previewUrl);
+ 					return attachment;
+@@ -268,12 +372,12 @@
+ 				return sessions;
+ 			}
+ 			/** Convert browser files to canonical base64 prompt parts. */
+-			serializeImages(images) {
+-				return Promise.all(images.map(async (file) => ({
+-					type: "image",
+-					mediaType: imageMediaType(file.type),
+-					data: bytesToBase64(new Uint8Array(await file.arrayBuffer())),
+-					...file.name === "" ? {} : { name: file.name }
++			serializeImages(attachments) {
++				return Promise.all(attachments.map(async (attachment) => ({
++					type: attachment.kind === "image" ? "image" : "file",
++					mediaType: attachment.mediaType,
++					data: bytesToBase64(new Uint8Array(await attachment.file.arrayBuffer())),
++					...attachment.file.name === "" ? {} : { name: attachment.file.name }
+ 				})));
+ 			}
+ 		};
+@@ -3365,6 +3469,7 @@
+ 				imageLimits
+ 			]);
+ 			const inputRef = (0, react.useRef)(null);
++			const filePickerRef = (0, react.useRef)(null);
+ 			const cardRef = (0, react.useRef)(null);
+ 			const dragDepthRef = (0, react.useRef)(0);
+ 			const scrollRef = (0, react.useRef)(null);
+@@ -3560,11 +3665,18 @@
+ 			const intakeImages = (0, react.useCallback)((files) => {
+ 				if (addImages === void 0 || files.length === 0) return;
+ 				const rejected = (() => {
+-					if (imageLimits !== void 0) {
+-						if (files.some((file) => !imageLimits.mediaTypes.includes(file.type))) return addImages(files);
+-						if (attachments.length + files.length > imageLimits.maxImagesPerMessage) return t("image.tooMany", { count: imageLimits.maxImagesPerMessage });
+-						if (files.some((file) => file.size > imageLimits.maxImageBytes)) return t("image.fileTooLarge", { size: imageSizeText(imageLimits.maxImageBytes) });
+-						if (attachments.reduce((sum, attachment) => sum + attachment.file.size, 0) + files.reduce((sum, file) => sum + file.size, 0) > imageLimits.maxMessageImageBytes) return t("image.totalTooLarge", { size: imageSizeText(imageLimits.maxMessageImageBytes) });
++					const imageFiles = files.filter((file) => {
++						try {
++							return fileMediaType(file).kind === "image";
++						} catch {
++							return false;
++						}
++					});
++					if (imageLimits !== void 0 && imageFiles.length > 0) {
++						const existingImages = attachments.filter((attachment) => attachment.kind === "image");
++						if (existingImages.length + imageFiles.length > imageLimits.maxImagesPerMessage) return t("image.tooMany", { count: imageLimits.maxImagesPerMessage });
++						if (imageFiles.some((file) => file.size > imageLimits.maxImageBytes)) return t("image.fileTooLarge", { size: imageSizeText(imageLimits.maxImageBytes) });
++						if (existingImages.reduce((sum, attachment) => sum + attachment.file.size, 0) + imageFiles.reduce((sum, file) => sum + file.size, 0) > imageLimits.maxMessageImageBytes) return t("image.totalTooLarge", { size: imageSizeText(imageLimits.maxMessageImageBytes) });
+ 					}
+ 					return addImages(files);
+ 				})();
+@@ -3576,6 +3688,10 @@
+ 				showToast,
+ 				t
+ 			]);
++			const onPickFiles = (e) => {
++				intakeImages([...e.currentTarget.files ?? []]);
++				e.currentTarget.value = "";
++			};
+ 			const canAcceptDrop = !locked && !machineBusy && addImages !== void 0;
+ 			(0, react.useEffect)(() => {
+ 				const hasFiles = (event) => event.dataTransfer?.types.includes("Files") ?? false;
+@@ -3627,8 +3743,8 @@
+ 			const railItems = (0, react.useMemo)(() => attachments.map((attachment) => ({
+ 				id: attachment.id,
+ 				previewUrl: attachment.previewUrl,
+-				alt: attachment.file.name || t("image.pending"),
+-				removeLabel: t("image.remove", { name: attachment.file.name }),
++								alt: attachment.file.name || (attachment.kind === "image" ? t("image.pending") : t("file.pending")),
++								removeLabel: attachment.kind === "image" ? t("image.remove", { name: attachment.file.name }) : t("file.remove", { name: attachment.file.name }),
+ 				attachment
+ 			})), [attachments, t]);
+ 			const onSelect = (e) => {
+@@ -3754,6 +3870,15 @@
+ 							e.stopPropagation();
+ 						} : void 0,
+ 						children: [
++							(0, react_jsx_runtime.jsx)("input", {
++								ref: filePickerRef,
++								type: "file",
++								multiple: true,
++								accept: SUPPORTED_FILE_ACCEPT,
++								style: { display: "none" },
++								"aria-hidden": true,
++								onChange: onPickFiles
++							}),
+ 							overlay !== void 0 && (0, react_jsx_runtime.jsx)("div", {
+ 								className: InputBar_module_css_default.overlayAnchor,
+ 								children: overlay
+@@ -3828,6 +3953,20 @@
+ 								children: [(0, react_jsx_runtime.jsxs)("div", {
+ 									className: InputBar_module_css_default.tools,
+ 									children: [
++										(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
++											label: t("input.attachFiles"),
++											side: "top",
++											delayMs: 500,
++											children: (0, react_jsx_runtime.jsx)("button", {
++												type: "button",
++												className: InputBar_module_css_default.add,
++												"aria-label": t("input.attachFiles"),
++												disabled: locked || machineBusy || addImages === void 0,
++												onMouseDown: keepFocus,
++												onClick: () => filePickerRef.current?.click(),
++												children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPaperclipOutline16, { size: 14 })
++											})
++										}),
+ 										(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+ 											label: t("input.commands"),
+ 											side: "top",
+@@ -5787,13 +5926,14 @@
+ 			"placeholder.hero": "描述你想要构建的内容",
+ 			"placeholder.workspace": "选择一个工作区开始",
+ 			"input.commands": "命令",
++			"input.attachFiles": "添加文件",
+ 			"input.stop": "停止生成",
+ 			"input.send": "发送消息",
+ 			"placeholder.steerQueue": "Cmd/Ctrl+Enter 插话发送全部排队消息",
+ 			"input.accessMode": "访问模式，当前：{name}",
+-			"image.dropTitle": "图片拖动到此处即可添加",
+-			"image.dropDesc": "最多 {count} 张，每张 {size}",
+-			"image.dropBlocked": "当前无法添加图片",
++			"image.dropTitle": "文件拖动到此处即可添加",
++			"image.dropDesc": "图片最多 {count} 张，每张 {size}；CSV、PDF、Markdown、.skill 等文件也支持",
++			"image.dropBlocked": "当前无法添加文件",
+ 			"image.pending": "待发送图片",
+ 			"image.openOriginal": "查看原图",
+ 			"image.openOriginalLabel": "{label}，点击查看原图",
+@@ -5815,13 +5955,16 @@
+ 			"image.modelUnsupported": "当前模型不支持图片，请切换支持图片的模型",
+ 			"image.subagentUnsupported": "子智能体会话暂不支持图片",
+ 			"image.sendFailed": "图片发送失败（{reason}），请重新添加图片后再试",
++			"file.pending": "待发送文件",
++			"file.remove": "移除文件 {name}",
++			"file.unsupportedType": "支持 CSV、PDF、Markdown、.skill 及常见文字／代码文件",
+ 			"context.aria": "上下文已用 {percent}",
+ 			"context.used": "上下文已用",
+ 			"context.system": "系统提示词",
+ 			"context.tools": "工具",
+ 			"context.messages": "对话消息",
+ 			"stats.counts": "{turns} 轮 · {steps} 步",
+ 			"stats.llm": "LLM {duration}",
+ 			"stats.toolCall": "工具调用 {duration}",
+ 			"stats.ttftAverage": "首 token 平均 {duration}",
+ 			"stats.tokensPerSecond": "{throughput} tok/s",
+@@ -5952,13 +6095,14 @@
+ 			"placeholder.hero": "Describe what you want to build",
+ 			"placeholder.workspace": "Choose a workspace to start",
+ 			"input.commands": "Commands",
++			"input.attachFiles": "Attach files",
+ 			"input.stop": "Stop generating",
+ 			"input.send": "Send message",
+ 			"placeholder.steerQueue": "Cmd/Ctrl+Enter steers all queued messages",
+ 			"input.accessMode": "Access mode, current: {name}",
+-			"image.dropTitle": "Drag images here to add them",
+-			"image.dropDesc": "Up to {count} images, {size} each",
+-			"image.dropBlocked": "Images cannot be added right now",
++			"image.dropTitle": "Drag files here to add them",
++			"image.dropDesc": "Up to {count} images, {size} each; CSV, PDF, Markdown, and .skill files are also supported",
++			"image.dropBlocked": "Files cannot be added right now",
+ 			"image.pending": "Pending images",
+ 			"image.openOriginal": "View original",
+ 			"image.openOriginalLabel": "{label}, click to view original",
+@@ -5980,13 +6124,16 @@
+ 			"image.modelUnsupported": "The current model does not support images; switch to a model that does",
+ 			"image.subagentUnsupported": "Subagent sessions do not support images yet",
+ 			"image.sendFailed": "Sending images failed ({reason}); re-add them and try again",
++			"file.pending": "Pending file",
++			"file.remove": "Remove file {name}",
++			"file.unsupportedType": "CSV, PDF, Markdown, .skill, and common text/code files are supported",
+ 			"context.aria": "{percent} of context used",
+ 			"context.used": "of context used",
+ 			"context.system": "System prompt",
+ 			"context.tools": "Tools",
+ 			"context.messages": "Messages",
+ 			"stats.counts": "{turns} turns · {steps} steps",
+ 			"stats.llm": "LLM {duration}",
+ 			"stats.toolCall": "Tool call {duration}",
+ 			"stats.ttftAverage": "TTFT avg {duration}",
+ 			"stats.tokensPerSecond": "{throughput} tok/s",
+@@ -9662,6 +9809,7 @@
+ 								return null;
+ 							} catch (error) {
+ 								if (error instanceof UnsupportedImageMediaTypeError) return t("image.unsupportedType");
++								if (error instanceof UnsupportedDocumentMediaTypeError) return t("file.unsupportedType");
+ 								return error instanceof Error ? error.message : String(error);
+ 							}
+ 						},
