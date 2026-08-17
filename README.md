@@ -3,16 +3,16 @@
 可重新安裝的 DeepSeek Harness plugin，為 Web composer 增加常見文件附件：
 
 - CSV、TSV、PDF
-- Markdown、`.skill`、TXT
+- Markdown、`.skill` ZIP 技能包、TXT
 - JSON、YAML、XML、HTML、CSS
 - JavaScript、TypeScript、Python、Shell、SQL、Rust、Go、Java、C/C++ 等常見文字／程式檔案
 
-文字檔會直接放入 prompt；PDF 會在本機用 `pypdf` 抽取文字後放入 prompt。單一文件上限為 25 MB，同一則訊息的文件總量上限為 50 MB。圖片仍沿用 DSH 原本的圖片附件流程。
+文字檔會直接放入 prompt；`.skill` 封裝會自動擷取其中的 `SKILL.md` 與可讀文字檔；PDF 會在本機用 `pypdf` 抽取文字後放入 prompt。單一文件上限為 25 MB，同一則訊息的文件總量上限為 50 MB。圖片仍沿用 DSH 原本的圖片附件流程。
 
 ## 安裝
 
 ```sh
-dsh plugin --profile web add https://github.com/stfbutnou/dsh-file-attachments/releases/download/v0.1.1/dsh-file-attachments-0.1.1.tgz
+dsh plugin --profile web add https://github.com/stfbutnou/dsh-file-attachments/releases/download/v0.1.3/dsh-file-attachments-0.1.3.tgz
 ```
 
 也可以直接安裝 GitHub source：

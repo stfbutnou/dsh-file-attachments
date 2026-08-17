@@ -32,7 +32,7 @@
  	data: z$1.string(),
  	name: z$1.string().optional()
  })]);
-@@ -902,26 +907,119 @@
+@@ -902,26 +907,158 @@
  const DEFAULT_COLD_BLANK_PROBE_MAX_BYTES = 1024;
  /** Conversation message event types (the pagination counting unit). */
  const MESSAGE_TYPES = new Set(["user/message", "assistant/message"]);
@@ -47,7 +47,6 @@
 +	".txt",
 +	".md",
 +	".markdown",
-+	".skill",
 +	".csv",
 +	".tsv",
 +	".json",
@@ -104,6 +103,11 @@
 +	"application/xml",
 +	"application/sql"
 +]);
++	/** MIME types treated as ZIP skill archives. */
++	const DOCUMENT_ARCHIVE_MEDIA_TYPES = /* @__PURE__ */ new Set([
++	"application/zip",
++	"application/x-zip-compressed"
++]);
 +	/** Decode the browser payload while rejecting non-canonical base64 forms. */
 +function decodeBase64(data, label = "File") {
  	const decoded = Buffer.from(data, "base64");
@@ -116,6 +120,41 @@
 +		if (data.byteLength === 0) throw new AttachmentError("File is empty.", "EMPTY_FILE");
 +		const name = part.name ?? "attachment";
 +		const extension = extname(name).toLowerCase();
++		const looksLikeZip = data[0] === 80 && data[1] === 75 && [3, 5, 7].includes(data[2]) && [4, 6, 8].includes(data[3]);
++		if (extension === ".skill" && !looksLikeZip && !DOCUMENT_ARCHIVE_MEDIA_TYPES.has(part.mediaType)) return Buffer.from(data).toString("utf8").replace(/^\uFEFF/, "");
++		if (extension === ".skill" || DOCUMENT_ARCHIVE_MEDIA_TYPES.has(part.mediaType)) {
++			const target = join(tmpdir(), `dsh-upload-${randomUUID()}.skill`);
++			try {
++				await writeFile(target, data, { mode: 384 });
++				const python = String.raw`import sys
++import zipfile
++path = sys.argv[1]
++selected = []
++total = 0
++with zipfile.ZipFile(path) as archive:
++    for info in archive.infolist():
++        if info.is_dir(): continue
++        name = info.filename
++        lower = name.lower()
++        base = lower.rsplit("/", 1)[-1]
++        if base != "skill.md" and not lower.endswith((".md", ".markdown", ".txt", ".yaml", ".yml", ".json", ".toml", ".csv")): continue
++        if info.file_size > 5 * 1024 * 1024 or total + info.file_size > 10 * 1024 * 1024: raise ValueError("skill archive text exceeds the 10 MB extraction limit")
++        raw = archive.read(info)
++        selected.append((name, raw.decode("utf-8-sig")))
++        total += len(raw)
++if not selected: raise ValueError("skill archive contains no readable text files")
++selected.sort(key=lambda item: (0 if item[0].lower().rsplit("/", 1)[-1] == "skill.md" else 1, item[0]))
++chunks = []
++for name, text in selected: chunks.append("--- " + name + " ---\n" + text + "\n--- End " + name + " ---")
++sys.stdout.write("\n\n".join(chunks))`;
++				const result = await runNativeCommand("python3", ["-c", python, target]);
++				return result.stdout;
++			} catch (error) {
++				throw new AttachmentError("Unable to read the .skill archive on the local host.", "SKILL_ARCHIVE_EXTRACTION_FAILED", { cause: error });
++			} finally {
++				await rm(target, { force: true }).catch(() => {});
++			}
++		}
 +		if (part.mediaType === "application/pdf" || extension === ".pdf") {
 +			const target = join(tmpdir(), `dsh-upload-${randomUUID()}.pdf`);
 +			try {

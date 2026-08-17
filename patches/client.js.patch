@@ -1,6 +1,6 @@
 --- client.js
 +++ client.js
-@@ -57,11 +57,116 @@
+@@ -57,11 +57,118 @@
  		* private fields bypass that rebinding.
  		*/
  		/** Create one browser-only draft descriptor; only its id enters input state. */
@@ -17,7 +17,7 @@
 +			[".txt", "text/plain"],
 +			[".md", "text/markdown"],
 +			[".markdown", "text/markdown"],
-+			[".skill", "text/plain"],
++			[".skill", "application/zip"],
 +			[".csv", "text/csv"],
 +			[".tsv", "text/tab-separated-values"],
 +			[".json", "application/json"],
@@ -73,6 +73,8 @@
 +			"application/x-yaml",
 +			"application/xml",
 +			"application/sql",
++			"application/zip",
++			"application/x-zip-compressed",
 +			"application/pdf"
 +		]);
 +		const SUPPORTED_FILE_ACCEPT = [...IMAGE_EXTENSIONS.keys(), ...DOCUMENT_EXTENSIONS.keys()].join(",");
