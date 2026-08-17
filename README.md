@@ -36,11 +36,14 @@ python3 -m pip install pypdf
 
 ## 移除
 
+先還原 DSH 核心檔案，再移除 bundle：
+
 ```sh
+dsh-file-attachments restore
 dsh plugin --profile web remove dsh-file-attachments
 ```
 
-移除時會從 plugin 的備份還原 DSH 核心檔案；完成後同樣需要重啟 dsh。備份保留在 `$DSH_HOME/plugin-state/dsh-file-attachments/`，預設為 `~/.dsh/plugin-state/dsh-file-attachments/`，方便復原。
+`restore` 會從 plugin 的備份還原 DSH 核心檔案；完成後同樣需要重啟 dsh。備份保留在 `$DSH_HOME/plugin-state/dsh-file-attachments/`，預設為 `~/.dsh/plugin-state/dsh-file-attachments/`，方便復原。這個明確步驟是必要的，因為部分 pnpm 設定不會執行依賴的 `postuninstall`。
 
 ## 相容性
 

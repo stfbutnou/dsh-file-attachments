@@ -5,6 +5,9 @@
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
+  "bin": {
+    "dsh-file-attachments": "scripts/patch.mjs"
+  },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",

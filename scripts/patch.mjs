@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { copyFile, mkdir, readFile, rm } from 'node:fs/promises'
 import { existsSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -159,7 +161,7 @@ async function uninstall() {
 const action = process.argv[2]
 try {
   if (action === 'install') await install()
-  else if (action === 'uninstall') await uninstall()
+  else if (action === 'uninstall' || action === 'restore') await uninstall()
   else throw new Error('Usage: node scripts/patch.mjs <install|uninstall>')
 } catch (error) {
   console.error(`dsh-file-attachments: ${error instanceof Error ? error.message : String(error)}`)
