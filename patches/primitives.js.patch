@@ -1,0 +1,45 @@
+--- index.js
++++ index.js
+@@ -5307,0 +5308,38 @@
++function isGitHubUrl(url) {
++	try {
++		const hostname = new URL(url).hostname.toLowerCase();
++		return hostname === "github.com" || hostname.endsWith(".github.com");
++	} catch {
++		return false;
++	}
++}
++function renderGitHubMark() {
++	return jsx("svg", {
++		width: 14,
++		height: 14,
++		viewBox: "0 0 16 16",
++		fill: "currentColor",
++		"aria-hidden": "true",
++		focusable: "false",
++		children: jsx("path", {
++			d: "M8 .198a8 8 0 0 0-2.53 15.59c.4.074.55-.174.55-.386 0-.19-.007-.693-.01-1.36-2.01.437-2.43-.97-2.43-.97-.364-.927-.89-1.174-.89-1.174-.73-.5.055-.49.055-.49.806.057 1.23.827 1.23.827.717 1.228 1.88.873 2.34.667.073-.52.28-.873.51-1.074-1.6-.182-3.28-.8-3.28-3.56 0-.786.28-1.43.74-1.934-.074-.182-.32-.915.07-1.91 0 0 .604-.193 1.98.738A6.9 6.9 0 0 1 8 4.97c.61.003 1.22.082 1.79.24 1.37-.93 1.97-.738 1.97-.738.39.995.145 1.728.073 1.91.46.504.74 1.148.74 1.934 0 2.77-1.68 3.375-3.29 3.553.29.25.54.74.54 1.49 0 1.077-.01 1.946-.01 2.21 0 .214.14.463.55.385A8 8 0 0 0 8 .198Z"
++		})
++	});
++}
++function renderGitHubLink(href, children, key) {
++	const safeHref = sanitizeUrl(href);
++	if (safeHref === "") return jsx(Fragment$1, { children }, key);
++	return jsx("a", {
++		href: safeHref,
++		target: "_blank",
++		rel: "noopener noreferrer",
++		children: jsxs("span", {
++			style: {
++				display: "inline-flex",
++				alignItems: "center",
++				gap: "4px"
++			},
++			children: [renderGitHubMark(), children]
++		})
++	}, key);
++}
+@@ -5309 +5347,2 @@
+-	return renderSafeLink(normalizeUri(url), children, key);
++	const href = normalizeUri(url);
++	return isGitHubUrl(href) ? renderGitHubLink(href, children, key) : renderSafeLink(href, children, key);

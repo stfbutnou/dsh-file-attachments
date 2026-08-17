@@ -19,6 +19,18 @@ const TARGETS = [
     marker: 'SUPPORTED_FILE_ACCEPT',
   },
   {
+    id: 'skill-client',
+    relative: 'node_modules/@deepseek-ai/dsh-client-ui-skill/lib/client.js',
+    patch: 'skill-client.js.patch',
+    marker: 'skillReference',
+  },
+  {
+    id: 'primitives-client',
+    relative: 'node_modules/@deepseek-ai/dsh-client-ui-primitives/lib/index.js',
+    patch: 'primitives.js.patch',
+    marker: 'renderGitHubLink',
+  },
+  {
     id: 'host-apiproxy',
     relative: 'node_modules/@deepseek-ai/dsh-host-apiproxy/lib/index.js',
     patch: 'index.js.patch',

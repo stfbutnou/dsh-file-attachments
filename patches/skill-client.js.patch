@@ -1,0 +1,21 @@
+--- client.js
++++ client.js
+@@ -276,0 +277,6 @@
++			const skillReference = (name) => ({
++				source: "skill",
++				ref: name,
++				label: `/${name}`,
++				clipboardText: `/${name}`
++			});
+@@ -306 +312,10 @@
+-					return { text: `/${candidate.name} ` };
++					return { insert: skillReference(candidate.name) };
++				},
++				matchSpace(session, token) {
++					const name = token.startsWith("/") ? token.slice(1) : "";
++					if (name === "" || !fetches.get(session.sessionId)?.settled?.some((skill) => skill.name === name)) return;
++					return { insert: skillReference(name) };
++				},
++				codec: {
++					clipboardText: (ref) => `/${ref}`,
++					serialize: (ref) => Promise.resolve(`/${ref}`)

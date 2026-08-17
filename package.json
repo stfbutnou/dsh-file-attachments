@@ -1,7 +1,7 @@
 {
   "name": "dsh-file-attachments",
-  "version": "0.1.3",
-  "description": "Reinstallable DSH plugin that adds CSV, PDF, Markdown, .skill, text, and code-file attachments",
+  "version": "0.2.0",
+  "description": "Reinstallable DSH plugin with broad file attachments, compact skill chips, and GitHub link recognition",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
@@ -34,7 +34,9 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-conversation"
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-skill",
+        "@deepseek-ai/dsh-client-ui-primitives"
       ],
       "platform": "web"
     }
